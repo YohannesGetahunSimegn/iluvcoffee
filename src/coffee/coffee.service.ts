@@ -4,57 +4,62 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
 import { Coffee } from './entities/coffee.entity';
+import { CreateCoffeeDto } from './dto/create-coffee.dto';
+import { UpdateCoffeeDto } from './dto/update-coffee.dto';
 
 @Injectable()
 export class CoffeeService {
-  private coffees: Coffee[] = [
-    {
-      id: 1,
-      name: 'Shipwreck Roast',
-      brand: 'Buddy Brew',
-      flavors: ['chocoloate', 'vanila'],
-    },
-  ];
-
+  constructor(
+    @InjectRepository(Coffee)
+    private readonly coffeeRepository: Repository<Coffee>,
+  ) {}
   findALL() {
-    return this.coffees;
+    return this.coffeeRepository.find({
+      relations: ['flavors'],
+    });
   }
 
-  findOne(id: string) {
-    const coffee = this.coffees.find((item) => item.id === +id);
+  async findOne(id: number) {
+    const coffee = await this.coffeeRepository.findOne({
+      where: { id },
+      relations: ['flavors'],
+    });
     if (!coffee) {
       throw new NotFoundException(`coffee #${id} is not found`);
     }
     return coffee;
   }
 
-  create(createCoffeeDto: any) {
-    this.coffees.push(createCoffeeDto);
+  create(createCoffeeDto: CreateCoffeeDto) {
+    const coffee = this.coffeeRepository.create(createCoffeeDto);
+    return this.coffeeRepository.save(coffee);
   }
 
-  update(id: string, updateCoffeeDto: any) {
-    // Find the existing coffee by ID
-    const existingCoffee = this.findOne(id);
-    if (!existingCoffee) {
-      throw new Error(`Coffee with ID ${id} not found`);
+  async update(id: string, updateCoffeeDto: UpdateCoffeeDto) {
+    const coffee = await this.coffeeRepository.preload({
+      id: +id,
+      ...updateCoffeeDto,
+    });
+
+    if (!coffee) {
+      throw new NotFoundException(`coffe #${id} not found`);
     }
 
-    // Merge the existing coffee with the updated properties
-    const updatedCoffee = { ...existingCoffee, ...updateCoffeeDto };
-
-    // Here, save the updatedCoffee back to your data store
-    // Example for an in-memory store (array):
-    const coffeeIndex = this.coffees.findIndex((coffee) => coffee.id === +id);
-    this.coffees[coffeeIndex] = updatedCoffee;
-
-    // return updatedCoffee;
+    return this.coffeeRepository.save(coffee);
   }
 
-  remove(id: string) {
-    const coffeeIndex = this.coffees.findIndex((item) => item.id === +id);
-    if (coffeeIndex >= 0) {
-      this.coffees.splice(coffeeIndex, 1);
+  async remove(id: number) {
+    const coffee = await this.findOne(id); // Reuse the findOne method
+
+    // Safeguard in case `findOne` doesn't throw (depends on its implementation)
+    if (!coffee) {
+      throw new NotFoundException(`Coffee #${id} is not found`);
     }
+
+    this.coffeeRepository.remove(coffee);
   }
 }
